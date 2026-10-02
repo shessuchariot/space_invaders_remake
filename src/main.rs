@@ -18,6 +18,15 @@ struct Player {
     speed: f32,
 }
 
+// Define the Enemy struct to represent an enemy's position, speed, and whether it is dead or alive.
+struct Enemy {
+    x: f32,
+    y: f32,
+    speed: f32,
+    dead: bool,
+    // health: i32,
+}
+
 // Define the Shield struct to represent whether the player owns and has activated the shield upgrade.
 struct Shield {
     owned: bool,
@@ -35,6 +44,7 @@ struct Laser {
     y: f32,
     speed: f32, 
     angle: f32,
+    dead: bool,
 }
 
 // Define the direction enum to represent player movement directions (left or right).
@@ -55,9 +65,23 @@ fn my_window_config() -> Conf {
     }
 }
 
+// Define the spawn_wave function to create a wave of enemies based on the specified number of rows, enemies per row, and spacing between enemies.
+fn spawn_wave(enemies: &mut Vec<Enemy>, enemy_rows: usize, enemies_per_row: usize, enemy_spacing: f32) {
+    for row in 0..enemy_rows {
+        for column in 0..enemies_per_row {
+            enemies.push(Enemy {
+                x: 200.0 + (column as f32 * enemy_spacing),
+                y: 100.0 + (row as f32 * enemy_spacing),
+                speed: 100.0,
+                dead: false,
+            });
+        }
+    }
+}
+
+// The main function is the entry point of the game, where the game loop is executed and the game state is managed.
 #[macroquad::main(my_window_config)]
 async fn main() {
-s
     // Initialize game state and player attributes
     let mut current_state = GameState::Menu;
     let mut player = Player {
@@ -73,9 +97,19 @@ s
         owned: false,
     };
     let mut lasers: Vec<Laser> = Vec::new();
+
+    // Initialize enemy attributes, including their positions, spacing, and the number of enemies per row and rows.
+    let mut enemies: Vec<Enemy> = Vec::new();
+    let enemy_spacing: f32 = 75.0;
+    let enemies_per_row: usize = 8;
+    let enemy_rows: usize = 4;
+
+    // Populate the enemies vector with Enemy instances, calculating their positions based on the defined spacing and number of rows and columns.
+    spawn_wave(&mut enemies, enemy_rows, enemies_per_row, enemy_spacing);
+
+    // Initialize round number, maximum rounds, and player credits
     let mut round_number: u32 = 1;
     let round_max: u32 = 255;
-
     let mut credits: i32 = 25000;
 
     // Main game loop
@@ -134,12 +168,14 @@ s
                             y: player.y -20.0,
                             speed: 600.0,
                             angle: -12.0f32.to_radians(), 
+                            dead: false,
                         });
                         lasers.push(Laser {
                             x: player.x,
                             y: player.y -20.0,
                             speed: 600.0,
                             angle: 12.0f32.to_radians(), 
+                            dead: false,
                         });
                     } else {
                         lasers.push(Laser {
@@ -147,6 +183,7 @@ s
                             y: player.y - 20.0,
                             speed: 600.0,
                             angle: 0.0,
+                            dead: false,
                         });
                     }
                 }
@@ -180,6 +217,31 @@ s
                     );
                 }
 
+                // Collision detection between lasers and enemies. If a laser hits an enemy, the enemy is removed, and the player earns credits.
+                for laser in &mut lasers {
+                    for enemy in &mut enemies {
+                        // Check if the laser is within the bounds of the enemy's position (with a 15.0 unit margin)
+                        // If so, increase the player's credits and remove the enemy from the game, and the laser.
+                        if laser.x > enemy.x - 15.0 && laser.x < enemy.x + 15.0 &&
+                            laser.y > enemy.y - 20.0 && laser.y < enemy.y + 20.0 {
+                            credits += 150;
+                            enemy.dead = true;
+                            laser.dead = true;
+                        }
+                    }
+                }
+
+                // Remove enemies that have been hit by lasers here.
+                enemies.retain(|enemy| !enemy.dead);
+
+                // Remove lasers that have been hit by enemies here.
+                lasers.retain(|laser| !laser.dead);
+
+                if enemies.is_empty() {
+                    round_number += 1;
+                    current_state = GameState::RoundIntermission;
+                }
+
                 // Allow the player to skip to the next round by pressing P. This is useful for testing and debugging.
                 if is_key_pressed(KeyCode::P) {
                     current_state = GameState::RoundIntermission;
@@ -202,6 +264,7 @@ s
                 draw_text("Press ENTER to return to next round", 400.0, 600.0, 30.0, GRAY);
                 if is_key_pressed(KeyCode::Enter) {
                     current_state = GameState::InRound;
+                    spawn_wave(&mut enemies, enemy_rows, enemies_per_row, enemy_spacing);
                 }
                 if is_key_pressed(KeyCode::B) {
                     current_state = GameState::Shop;
@@ -226,7 +289,7 @@ s
                 }
 
                 draw_text("Press corrosponding number to buy.", 400.0, 750.0, 30.0, GRAY);
-                draw_text("Press ENTER to return to next round", 400.0, 800.0, 30.0, WHITE);
+                draw_text("Press ESC to return to the round intermission screen.", 400.0, 800.0, 30.0, WHITE);
 
                 if is_key_pressed(KeyCode::Key1) {
                     if credits >= 1250 && !double_lasers.owned {
@@ -244,9 +307,8 @@ s
                     }
                 }
 
-
-                if is_key_pressed(KeyCode::Enter) {
-                    current_state = GameState::InRound;
+                if is_key_pressed(KeyCode::Escape) {
+                    current_state = GameState::RoundIntermission;
                 }
             }
 
@@ -262,6 +324,13 @@ s
         let v3 = Vec2::new(player.x + 25.0, player.y + 25.0);
         draw_triangle(v1, v2, v3, PURPLE);
 
+        // Draw the enemies as a triangle
+        for enemy in &enemies {
+        let v1 = Vec2::new(enemy.x, enemy.y + 20.0);
+        let v2 = Vec2::new(enemy.x - 15.0, enemy.y - 15.0);
+        let v3 = Vec2::new(enemy.x + 15.0, enemy.y - 15.0);
+        draw_triangle(v1, v2, v3, GREEN);
+        }
 
         next_frame().await;
     }
